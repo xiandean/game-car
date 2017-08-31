@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=640,user-scalable=0;">
+    <style>
+        *{margin:0;padding:0;}
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+        }
+    </style>
+    <title>creatjsDemo</title>
+    <script src="lib/js/fixViewport750/index.js"></script>
+    <script src="lib/js/EaselJS/lib/easeljs-0.8.2.min.js"></script>
+    <script src="lib/js/PreloadJS/lib/preloadjs-0.6.2.min.js"></script>
+    <script src="lib/js/TweenJS/lib/tweenjs-0.6.2.min.js"></script>
+    <script src="lib/js/hammerjs/hammer.min.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+    function Game(config) {
+        this.stage = new createjs.Stage(config.id);
+        this.x = config.x ? config.x : 0;
+        this.y = config.y ? config.y : 0;
+        this.width = config.width ? config.width : window.innerWidth;
+        this.height = config.height ? config.height : window.innerHeight;
+        this.stage.canvas.width = this.width;
+        this.stage.canvas.height = this.height;
+        this.showFPS = config.showFPS ? true : false;
+        this.sourceData = config.sources || "";
+        this.objects = {};
+    }
+    Game.prototype = {
+        constructor: Game,
+        preload: function(callback) {
+            var _this = this;
+            this.sources = new createjs.LoadQueue(false);
+            this.sources.addEventListener('progress', function(event) {
+                console.log(Math.floor(event.progress*100) + "%");
+            });
+            this.sources.addEventListener('error', function(event) {
+                console.log(event);
+            });
+            this.sources.addEventListener('complete', function(event) {
+                callback && callback();
+            });
+            this.sources.loadManifest(this.sourceData);
+        },
+        init: function(param) {
+            console.log();
+            if(param instanceof Function) {
+                var callback = param;
+            }else if(param) {
+                var model = param.model;
+                var controller = param.controller;
+                var callback = param.callback;
+            }
+            var _this = this;
+            this.paused = true;
+            if(!this.model && model) {
+                this.model = model;
+            }
+            if(!this.controller && controller) {
+                this.controller = controller;
+            }
+            createjs.Touch.enable(this.stage);
+            if(!this.sources) {
+                this.preload(function(){
+                    _this.render();
+                    callback && callback();
+                });
+            }else {
+                this.render();
+                callback && callback();
+            }
+        },
+        render: function() {
+            if(this.model) {
+                for(var i = 0; i < this.model.length; i++) {
+                    this.addObject(this.model[i]);
+                }
+            }
+            
+            if(this.controller) {
+                this.controller();
+            }
+            if(this.showFPS) {
+                this.setFPS();
+            }
+            this.stage.update();
+        },
+        addObject: function(objectData) {
+            var id = objectData.id;
+            var parent = this.objects[objectData.parent] || this.stage;
+            if(objectData.object){
+                this.objects[id] = objectData.object;
+            }else if(objectData.spriteData){
+                var spriteData = {};
+                spriteData.images = [];
+                for(var j = 0; j < objectData.spriteData.images.length; j++) {
+                    spriteData.images.push(this.sources.getResult(objectData.spriteData.images[j]));
+                }
+                spriteData.frames = objectData.spriteData.frames;
+                spriteData.animations = objectData.spriteData.animations;
+       
+                var spriteSheet = new createjs.SpriteSheet(spriteData);
+                this.objects[id] = new createjs.Sprite(spriteSheet);
+            }else if(objectData.shapeData){
+                this.objects[id] = new createjs.Shape();
+                for(var method in objectData.shapeData) {
+                    var param = objectData.shapeData[method]; 
+                    var arr = [];
+                    if(param instanceof Array) {
+                        arr = param;
+                    }else {
+                        arr.push(param);
+                    }
+                    this.objects[id].graphics[method].apply(this.objects[id].graphics, arr);
+                }
+            }else if(objectData.textData){
+                this.objects[id] = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
+            }else {
+                var image = objectData.image || this.sources.getResult(id);
+                if(image) {
+                    this.objects[id] = new createjs.Bitmap(image);
+                }else {
+                    this.objects[id] = new createjs.Container();
+                }
+                
+            }
+            if(objectData.data) {
+                for(var key in objectData.data) {
+                    this.objects[id][key] = objectData.data[key];
+                }
+            }
+            parent.addChild(this.objects[id]);
+        },  
+        getBounds: function() {
+            return {x: this.x, y: this.y, width: this.width, height: this.height}
+        },
+        start: function() {
+            var _this = this;
+            this.paused = false;
+            createjs.Ticker.timingMode = createjs.Ticker.RAF;
+            createjs.Ticker.setFPS(60);
+            createjs.Ticker.addEventListener("tick", this._handleTick = function(event) {
+                if(!_this.paused) {
+                    _this.stage.update();
+                }
+                if(_this.showFPS) {
+                    _this.fpstext.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
+                }
+            });
+        },
+        pause: function() {
+            this.paused = true;
+        },
+        resume: function() {
+            this.paused = false;
+        },
+        stop: function() {
+            this.paused = true;
+            createjs.Ticker.removeEventListener("tick", this._handleTick);
+            this.stage.removeAllChildren();
+            this.objects = {};
+        },
+        restart: function() {
+            this.stop();
+            this.init();
+            this.start();
+        },
+        setFPS: function() {
+            this.fpstext = new createjs.Text("","20px Arial","#f00");
+            this.fpstext.x = 0;
+            this.fpstext.y = this.height - 24;
+            this.stage.addChild(this.fpstext);
+        }
+    };
+
+    function MyGame(config) {
+        this.Game_constructor(config);
+        this.sourceData = [
+            {src: "images/rubbish_car_01.png", id: "player"},
+            {src: "images/rubbish_car_02.png", id: "car_02"},
+            {src: "images/rubbish_01.png", id: "rubbish_01"},
+            {src: "images/rubbish_02.png", id: "rubbish_02"},
+            {src: "images/rubbish_03.png", id: "rubbish_03"},
+            {src: "images/rubbish_box.png", id: "rubbish_04"},
+            {src: "images/rubbish_bg_01.jpg", id: "bg_01"},
+            {src: "images/rubbish_bg_02.jpg", id: "road"},
+            {src: "images/rubbish_bg_03.jpg", id: "bg_03"}
+        ];
+        this.model = [
+            {
+                id: "bg"
+            },{
+                id: "bg_01",
+                parent: "bg"
+            },{
+                id: "bg_03",
+                parent: "bg",
+                data: {
+                    y: 860
+                }
+            },{
+                id: "road_wrap",
+                data: {
+                    y: 293
+                }
+            },{
+                id: "road",
+                parent: "road_wrap"
+            }
+        ];
+        this.speed = this.initSpeed = 10;
+        this.maxCar = 4;
+        this.positionY = {
+            up: 350 - 293,
+            center: 500 - 293,
+            down: 650 - 293
+        };    
+    }
+    createjs.extend(MyGame, Game);
+    MyGame.prototype.controller = function() {
+        var _this = this;
+        this.carPool = [];   
+        this.cars = []; 
+        this.coinPool = [];
+        this.coins = [];
+        this.carGap = this.getBounds().width * 5 / 4;
+
+        var bg = this.objects.bg;
+        var bg_01 = this.objects.bg_01;
+        this.addObject({
+            id: "bg_01_temp",
+            object: bg_01.clone(),
+            parent: "bg",
+            data: {
+                x: bg_01.getBounds().width
+            }
+        });
+        var bg_03 = this.objects.bg_03;
+        this.addObject({
+            id: "bg_03_temp",
+            object: bg_03.clone(),
+            parent: "bg",
+            data: {
+                x: bg_03.getBounds().width,
+                y: bg_03.y
+            }
+        });
+        var road = this.objects.road;
+        this.addObject({
+            id: "road_temp",
+            object: road.clone(),
+            parent: "road_wrap",
+            data: {
+                x: road.getBounds().width,
+                y: road.y
+            }
+        });
+
+        
+        var road_wrap = this.objects.road_wrap;
+        var bg_01_temp = this.objects.bg_01_temp;
+        var bg_03_temp = this.objects.bg_03_temp;
+        var road_temp = this.objects.road_temp;
+        var bg_01_width = bg_01.getBounds().width;
+        var bg_03_width = bg_03.getBounds().width;
+        var road_width = road.getBounds().width;
+
+        var coinIds = ["rubbish_01", "rubbish_02", "rubbish_03"];
+        for(var i = 0; i < coinIds.length; i++) {   
+            if(coinIds[i] == "rubbish_03") {
+                var len = 1;
+            }else {
+                var len = 3;
+            }
+            for(var j = 0; j < len; j++) {
+                var coin = new createjs.Bitmap(this.sources.getResult(coinIds[i]));
+                coin.type = coinIds[i];
+                this.coinPool.push(coin);
+            }
+        }
+        for(var i = 0; i < 4; i++) {
+            var index = Math.floor(Math.random() * this.coinPool.length);
+            var coin = this.coinPool[index];
+            this.coins.push(coin);
+            this.coinPool.splice(index, 1);
+        }
+        for(var i = 0; i < 4; i++) {
+            var positionArr = ["up", "center", "down"];
+            var random = Math.floor(Math.random() * positionArr.length);
+            var x = this.carGap/2 + this.carGap * i;
+            this.coins[i].x = x;
+            this.coins[i].y = this.positionY[positionArr[random]];
+            road_wrap.addChild(this.coins[i]);
+        }
+
+
+        var carIds = ["player", "car_02", "car_02"];
+        for(var i = 0; i < carIds.length; i++) {
+            var car = new createjs.Bitmap(this.sources.getResult(carIds[i]));
+            this.carPool.push(car);
+            var car_temp = car.clone();
+            this.carPool.push(car_temp);
+        }
+
+        for(var i = 0; i < this.maxCar; i++) {
+            var index = Math.floor(Math.random() * this.carPool.length);
+            var car = this.carPool[index];
+            this.cars.push(car);
+            this.carPool.splice(index, 1);
+        }
+
+        for(var i = 0; i < this.maxCar/2; i++) {
+            var positionArr = ["up", "center", "down"];
+            var random = Math.floor(Math.random() * positionArr.length);
+            var nonPosition = positionArr[random];
+            positionArr.splice(random, 1);
+
+            var x = this.carGap + this.carGap * i;
+            var index = 0 + i * 2;
+            this.cars[index].x = x;
+            this.cars[index].y = this.positionY[positionArr[0]];
+            this.cars[index].speed = Math.random() + 1;
+            road_wrap.addChild(this.cars[index]);
+
+            index = 1 + i * 2;
+            this.cars[index].x = x;
+            this.cars[index].y = this.positionY[positionArr[1]];
+            this.cars[index].speed = Math.random() + 1;
+            road_wrap.addChild(this.cars[index]);
+        }
+
+        this.addObject({
+            id: "player",
+            parent: "road_wrap",
+            data: {
+                x: 20,
+                y: this.positionY.center
+            }
+        });
+        var player = game.objects.player;
+
+        var player_width = player.getBounds().width;
+        var player_height = player.getBounds().height;
+
+        function checkHitCar() {
+            for(var i = 0; i < 2; i++) {
+                var car = _this.cars[i];
+                if(player.x + player_width - 20 < car.x || player.x > car.x + car.getBounds().width - 20 || player.y + player_height - 10 < car.y + car.getBounds().height/ 2 || player.y + player_height/ 2 > car.y + car.getBounds().height - 10 ) {
+                    continue;
+                }else { 
+                    // console.log("hit");
+                    if(!player.strong) {
+                        road_wrap.removeAllEventListeners("tick");
+                        _this.pause();
+                        setTimeout(function() {
+                            _this.restart();
+                        }, 200);
+                        return;
+                    }else {
+                        road_wrap.removeChild(car);
+                    }
+                    
+                }
+            }
+        }
+
+        function handleBg() {
+            
+            if(bg_01_temp.x + bg.x + bg_01_width < 0) {
+                bg_01_temp.x += bg_01_width * 2;
+            }else if(bg_01.x + bg.x + bg_01_width < 0) {
+                bg_01.x += bg_01_width * 2;
+            }
+            if(bg_03_temp.x + bg.x + bg_03_width < 0) {
+                bg_03_temp.x += bg_03_width * 2;
+            }else if(bg_03.x + bg.x + bg_03_width < 0) {
+                bg_03.x += bg_03_width * 2;
+            }
+            if(road_temp.x + road_wrap.x + road_width < 0) {
+                road_temp.x += road_width * 2;
+            }else if(road.x + road_wrap.x + road_width < 0) {
+                road.x += road_width * 2;
+            }
+
+        }
+
+        function handleCoin() {
+            for(var i = 0; i < 1; i++) {
+                var coin = _this.coins[i];
+                var coin_width = coin.getBounds().width;
+                var coin_height = coin.getBounds().height;
+                if(coin.x + coin_width < player.x || coin.x > player.x + player_width || coin.y + coin_height < player.y || coin.y > player.y + player_height) {
+                    var hit = false;
+                }else {
+                    if(coin.type == "rubbish_03") {
+                        _this.speed =  _this.initSpeed * 4;
+                        player.strong = true;
+                        player.strongCount = 20;
+                    }
+                    var hit = true;
+                }
+
+                if(coin.x + road_wrap.x + coin_width < 0 || hit) {
+                    road_wrap.removeChild(coin);
+                    _this.coinPool.push(coin);
+                    _this.coins.splice(0, 1);
+                    var x = _this.coins[_this.coins.length - 1].x + _this.carGap;
+                    var positionArr = ["up", "center", "down"];
+                    var random = Math.floor(Math.random() * positionArr.length);
+                    var index = Math.floor(Math.random() * _this.coinPool.length);
+                    _this.coins.push(_this.coinPool[index]);
+                    _this.coinPool[index].x = x;
+                    _this.coinPool[index].y = _this.positionY[positionArr[random]];
+                    road_wrap.addChild(_this.coinPool[index]);
+                    _this.coinPool.splice(index, 1);
+                }
+            }
+        }
+
+        function handleCar() {
+            checkHitCar();
+            if(_this.cars[0].x + road_wrap.x + _this.cars[0].getBounds().width < 0 && _this.cars[1].x + road_wrap.x + _this.cars[1].getBounds().width < 0) {
+
+                if(player.strongCount) {
+                    player.strongCount = player.strongCount - 2;
+                    if(player.strongCount <= 0) {
+                        player.strongCount = 0;
+                    }   
+                }
+                road_wrap.removeChild(_this.cars[0]);
+                road_wrap.removeChild(_this.cars[1]);
+                _this.carPool.push(_this.cars[0]);
+                _this.carPool.push(_this.cars[1]);
+                _this.cars.splice(0, 1);
+                _this.cars.splice(0, 1);
+                var x = _this.cars[_this.cars.length - 1].x + _this.carGap;
+
+                var positionArr = ["up", "center", "down"];
+                var random = Math.floor(Math.random() * positionArr.length);
+                positionArr.splice(random, 1);
+                for(var i = 0; i < 2; i++) {
+                    var index = Math.floor(Math.random() * _this.carPool.length);
+                    var car = _this.carPool[index];
+                    _this.cars.push(car);
+                    _this.carPool.splice(index, 1);
+
+                    car.x = x;
+                    car.y = _this.positionY[positionArr[i]];
+                    car.speed = Math.random() + 1;
+                    road_wrap.addChild(car);
+                }
+            }
+            for(var i = 0; i < _this.cars.length; i++) {
+                _this.cars[i].x += _this.cars[i].speed;
+            }
+        }
+        function handlePlayer() {
+            if(player.strong && !player.strongCount && _this.cars[0].x + road_wrap.x + _this.cars[0].getBounds().width < player.x + player_width && _this.cars[1].x + road_wrap.x + _this.cars[1].getBounds().width < player.x + player_width) {
+                player.strong = false;
+                _this.speed = _this.initSpeed;
+            }
+
+        }
+        road_wrap.addEventListener("tick", function() {
+
+            handleBg();
+            
+            handleCoin();
+            
+            handleCar();
+
+            handlePlayer();
+
+            bg.x -= _this.speed * 3 / 2;
+
+            road_wrap.x -= _this.speed;
+
+            player.x += _this.speed;
+            
+        });
+
+    }
+    MyGame = createjs.promote(MyGame, "Game");
+    
+    var gameConfig = {
+        id: 'game',
+        showFPS: true
+    };
+    var game = new MyGame(gameConfig);
+
+    game.init(function() {
+        game.start();
+
+        var hammer = new Hammer(game.stage.canvas);
+        hammer.get('swipe').set({ direction: Hammer.DIRECTION_ALL });//横向和纵向的swipe事件
+        hammer.on("swipeup", function(ev) {
+            if(game.paused) {
+                return;
+            }
+            var player = game.objects.player;
+            var road_wrap = game.objects.road_wrap;
+            road_wrap.setChildIndex(player, road_wrap.getNumChildren() - 1);
+            if(player.y == game.positionY.center) {
+                createjs.Tween.get(player).to({y: game.positionY.up}, 200);
+            }else if(player.y == game.positionY.down) {
+                createjs.Tween.get(player).to({y: game.positionY.center}, 200);
+            }
+            
+        });
+        hammer.on("swipedown", function(ev) {
+            if(game.paused) {
+                return;
+            }
+            var player = game.objects.player;
+            var road_wrap = game.objects.road_wrap;
+            road_wrap.setChildIndex(player, 6);
+            if(player.y == game.positionY.up) {
+                createjs.Tween.get(player).to({y: game.positionY.center}, 200);
+            }else if(player.y == game.positionY.center) {
+                createjs.Tween.get(player).to({y: game.positionY.down}, 200);
+            }
+        });
+        
+    });
+    
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "demo",
+  "description": "createjs demo",
+  "main": "",
+  "authors": [
+    "xiandean"
+  ],
+  "license": "ISC",
+  "keywords": [
+    "createjs",
+    "demo"
+  ],
+  "homepage": "https://github.com/xiandean/demo-createjs",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "EaselJS": "easeljs#^0.8.2",
+    "fixViewport750": "http://guangdong.sinaimg.cn/subject/2017/lib/js/fixViewport640.js",
+    "PreloadJS": "^0.6.2",
+    "TweenJS": "^0.6.2",
+    "hammerjs": "hammer#^2.0.8"
+  }
+}
